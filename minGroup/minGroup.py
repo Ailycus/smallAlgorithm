@@ -5,6 +5,7 @@
 # @Content: 给定一组数据，将其划分为多个小组，要求每组数据之和小于等于max_th，每组数值优先填满基础阈值base_th，求最少分组数及每组的数值。
 from collections import Counter
 
+stop = False
 
 def epoch_group(data, max_th):
     if sum(data) <= max_th:
@@ -196,6 +197,97 @@ def minGroup_exhaustion(data, max_th, base_th, best_grp):
             print("distance: {:.2f}, {}".format(dist, grp))
 
 
+def minGroupFullSearch(data, max_th, base_th, best_grp):
+    '''
+        尝试从后往前搜素优化算法
+        一组一组的确定，获取每组的最优解，一直到数据全部用完
+    '''
+    # 对数据由大到小排序
+    data = sorted(data, reverse=True)
+    count = len(data)
+    groups = []
+
+    while len(data) > 0:
+        init_grp = []
+        init_diff = max_th
+        # 如果最大值大于max_th，则将其单独作为一个组
+        if data[0] >= max_th:
+            groups.append([data[0]])
+            del data[0]
+            continue
+
+        # 剩余数据总和小于等于max_th，则将全部数据加入groups之中， 并结束循环
+        if init_diff == max_th and sum(data) <= max_th:
+            groups.append(data)
+            break
+
+        # 从大到小依次获取数值放入init_grp中，作为后续优化的基础
+        init_index = []
+        for i, v in enumerate(data):
+            if init_diff >= v:
+                init_grp.append(v)
+                init_diff = init_diff - v
+                init_index.append(i)
+            elif init_diff < data[-1]:
+                break
+
+        # 如果init_grp的diff为0，则为最优，不进行后续优化搜索
+        if init_diff == 0:
+            groups.append(init_grp)
+            for i in init_index[::-1]:
+                del data[i]
+        else:
+            # 当前init_grp并非最优结果，根据此结果进行算法优化
+            cur_base_diff = init_diff
+            min_diff = init_diff # 记录最小loss
+            tmp_best_grp = init_grp.copy() # 用于记录最优组合
+            tmp_best_index = init_index.copy() # 用于记录最优组合数据索引
+            while len(init_grp) > 0:
+                value = init_grp.pop(-1) # 拿出最后一个数值
+                diff = cur_base_diff + value # 更新loss
+                cur_base_diff = diff
+                id = init_index.pop(-1) # 最后一个值的索引
+
+                if sum(data[id+1:]) >= diff:
+                    # 当前值后面的数累加和大于等于diff+当前值，才有可能替换当前值
+                    first_id = id
+                    best_flag = False
+                    while first_id < (len(data) - 1):
+                        tmp_grp = []
+                        tmp_index = []
+                        diff = cur_base_diff
+                        for i, v in enumerate(data):
+                            if i > first_id and diff >= v:
+                                tmp_grp.append(v)
+                                tmp_index.append(i)
+                                diff = diff - v
+                            elif diff < data[-1]:
+                                break
+                        # 结束循环，获取一组排列及对应dist
+                        if diff == 0: # 如果已获取最优值
+                            best_flag = True
+                            tmp_best_grp = init_grp + tmp_grp
+                            tmp_best_index = init_index + tmp_index
+                            break # 结束本轮
+                        elif diff < min_diff: # 结果优于init_diff则保留
+                            min_diff = diff
+                            tmp_best_grp = init_grp + tmp_grp
+                            tmp_best_index = init_index + tmp_index
+                        first_id = tmp_index[0]
+
+                    if best_flag:
+                        break
+                else:
+                    # 无法优化该值，继续往前找
+                    continue
+            # 优化搜索结束，获取最优解
+            groups.append(tmp_best_grp)
+            for i in tmp_best_index[::-1]:
+                del data[i]
+
+    print('共有%d个数据，划分为%d组' % (count, len(groups)))
+    result = averageResult(groups, max_th, base_th)
+    print_result(result, max_th)
 
 #-------------------------------------
 def find_first_grp(data, max_th, init_loss):
@@ -283,6 +375,51 @@ def find_first_grp(data, max_th, init_loss):
         res_list.append(res_node)
 
     return res_list
+
+
+def group(data, max_th, base_th):
+    '''
+        数据从大到小排序
+        依次将序列的最大值加入分组，如果当前最大值小于可用空间，则循环判断依次向后查找能够放入该组的最大值并放入，直到当前组剩余空间小于目前序列的最小值。
+    '''
+    count = len(data)
+    result = []
+    res = []
+    diff = max_th
+
+    while len(data) > 0:  # 还有数据
+        if max_th <= data[0]:
+            result.append([data])
+            del data[0]
+            continue
+        if diff == max_th and sum(data) <= max_th:
+            result.append(data)
+            break
+        if diff >= data[0]:  # 剩余空间大于当前最大值，则加入
+            res.append(data[0])
+            diff = diff - data[0]  # 剩余空间
+            del data[0]  # 删除该值
+            continue
+        else:   # 最大值大于diff
+            if diff >= data[-1]:
+                index = []
+                for i, v in enumerate(data):
+                    if diff >= v:
+                        res.append(v)
+                        diff = diff - v
+                        index.append(i)
+                    elif diff < data[-1]:
+                        break
+                data = [v for i, v in enumerate(data) if i not in index]
+
+            result.append(res) # 剩余空间无法装任何数据时，结束该组
+            res = []
+            diff = max_th
+
+    # 计算距离
+    result = averageResult(result, max_th, base_th)
+    print('共有%d个数据，划分为%d组' % (count, len(result)))
+    print_result(result, max_th)
 
 
 def minGroupExhanstion(data, max_th, base_th):
@@ -386,8 +523,10 @@ def generate_tree(node, data, max_th, min_space, init_loss, cur_loss):
         loss = cur_loss
         cur_data = data.copy()
         loss += res.cur_loss
+        # if loss >= init_loss:
         if round(loss, 2) > round(min_space, 2) or round(loss, 2) >= round(init_loss, 2):
             # 放弃该分支
+            # node.is_break = True
             node.subNode[-1].is_break = True
             continue
         for v in res.grp:
@@ -404,9 +543,9 @@ class Node():
     def __init__(self, cur_data=None, loss=0, sub_node=[]):
         self.grp = cur_data
         self.cur_loss = loss
-        self.is_break = False # 中断分支，不遍历该分支
-        self.is_stop = False # 已找到最优解，停止遍历
-        self.stop_generate = False # 已找到最优解，停止生成树
+        self.is_break = False
+        self.is_stop = False
+        self.stop_generate = False
         self.subNode = sub_node
 
     def add_node(self, sub_nd_list):
@@ -414,100 +553,6 @@ class Node():
 
     def add_subnode_ele(self, list_ele):
         self.subNode.append(list_ele)
-
-
-def minGroupFullSearch(data, max_th, base_th, best_grp):
-    '''
-        尝试从后往前搜素优化算法
-        一组一组的确定，获取每组的最优解，一直到数据全部用完
-    '''
-    # 对数据由大到小排序
-    data = sorted(data, reverse=True)
-    count = len(data)
-    groups = []
-
-    while len(data) > 0:
-        init_grp = []
-        init_diff = max_th
-        # 如果最大值大于max_th，则将其单独作为一个组
-        if data[0] >= max_th:
-            groups.append([data[0]])
-            del data[0]
-            continue
-
-        # 剩余数据总和小于等于max_th，则将全部数据加入groups之中， 并结束循环
-        if init_diff == max_th and sum(data) <= max_th:
-            groups.append(data)
-            break
-
-        # 从大到小依次获取数值放入init_grp中，作为后续优化的基础
-        init_index = []
-        for i, v in enumerate(data):
-            if init_diff >= v:
-                init_grp.append(v)
-                init_diff = init_diff - v
-                init_index.append(i)
-            elif init_diff < data[-1]:
-                break
-
-        # 如果init_grp的diff为0，则为最优，不进行后续优化搜索
-        if init_diff == 0:
-            groups.append(init_grp)
-            for i in init_index[::-1]:
-                del data[i]
-        else:
-            # 当前init_grp并非最优结果，根据此结果进行算法优化
-            cur_base_diff = init_diff
-            min_diff = init_diff # 记录最小loss
-            tmp_best_grp = init_grp.copy() # 用于记录最优组合
-            tmp_best_index = init_index.copy() # 用于记录最优组合数据索引
-            while len(init_grp) > 0:
-                value = init_grp.pop(-1) # 拿出最后一个数值
-                diff = cur_base_diff + value # 更新loss
-                cur_base_diff = diff
-                id = init_index.pop(-1) # 最后一个值的索引
-
-                if sum(data[id+1:]) >= diff:
-                    # 当前值后面的数累加和大于等于diff+当前值，才有可能替换当前值
-                    first_id = id
-                    best_flag = False
-                    while first_id < (len(data) - 1):
-                        tmp_grp = []
-                        tmp_index = []
-                        diff = cur_base_diff
-                        for i, v in enumerate(data):
-                            if i > first_id and diff >= v:
-                                tmp_grp.append(v)
-                                tmp_index.append(i)
-                                diff = diff - v
-                            elif diff < data[-1]:
-                                break
-                        # 结束循环，获取一组排列及对应dist
-                        if diff == 0: # 如果已获取最优值
-                            best_flag = True
-                            tmp_best_grp = init_grp + tmp_grp
-                            tmp_best_index = init_index + tmp_index
-                            break # 结束本轮
-                        elif diff < min_diff: # 结果优于init_diff则保留
-                            min_diff = diff
-                            tmp_best_grp = init_grp + tmp_grp
-                            tmp_best_index = init_index + tmp_index
-                        first_id = tmp_index[0]
-
-                    if best_flag:
-                        break
-                else:
-                    # 无法优化该值，继续往前找
-                    continue
-            # 优化搜索结束，获取最优解
-            groups.append(tmp_best_grp)
-            for i in tmp_best_index[::-1]:
-                del data[i]
-
-    print('共有%d个数据，划分为%d组' % (count, len(groups)))
-    result = averageResult(groups, max_th, base_th)
-    print_result(result, max_th)
-
 
 
 def minGroupFixSearch(data, max_th, base_th):
@@ -656,51 +701,6 @@ def minGroup(data, max_th, base_th):
         groups.append(grp)
 
     result = averageResult(groups, max_th, base_th)
-    print('共有%d个数据，划分为%d组' % (count, len(result)))
-    print_result(result, max_th)
-
-
-def group(data, max_th, base_th):
-    '''
-        数据从大到小排序
-        依次将序列的最大值加入分组，如果当前最大值小于可用空间，则循环判断依次向后查找能够放入该组的最大值并放入，直到当前组剩余空间小于目前序列的最小值。
-    '''
-    count = len(data)
-    result = []
-    res = []
-    diff = max_th
-
-    while len(data) > 0:  # 还有数据
-        if max_th <= data[0]:
-            result.append([data])
-            del data[0]
-            continue
-        if diff == max_th and sum(data) <= max_th:
-            result.append(data)
-            break
-        if diff >= data[0]:  # 剩余空间大于当前最大值，则加入
-            res.append(data[0])
-            diff = diff - data[0]  # 剩余空间
-            del data[0]  # 删除该值
-            continue
-        else:   # 最大值大于diff
-            if diff >= data[-1]:
-                index = []
-                for i, v in enumerate(data):
-                    if diff >= v:
-                        res.append(v)
-                        diff = diff - v
-                        index.append(i)
-                    elif diff < data[-1]:
-                        break
-                data = [v for i, v in enumerate(data) if i not in index]
-
-            result.append(res) # 剩余空间无法装任何数据时，结束该组
-            res = []
-            diff = max_th
-
-    # 计算距离
-    result = averageResult(result, max_th, base_th)
     print('共有%d个数据，划分为%d组' % (count, len(result)))
     print_result(result, max_th)
 
@@ -859,13 +859,13 @@ def minGroupDivide(data, max_th, best_grp):
             else:
                 new_result.append(grp)
 
+
+        # print('#' * 20)
         print('共有%d个数据，划分为%d组' % (num, len(new_result)))
         print_result(new_result, max_th)
-
     else:
-        print('共有%d个数据，划分为%d组' % (num, len(result)))
+        # 计算距离
         print_result(result, max_th)
-
 
 
 
@@ -885,21 +885,36 @@ def generate_random(a, b, n, isFloat=False):
 if __name__ == '__main__':
     import random
     import time
+    import sys
+
+    max_num = int(sys.argv[1])
 
     data1 = [16.6,16.62,16.7,17.37,13.4,13.4,13.35,13.42,13.35,13.42,13.4,13.4,13.42,13.37,13.35,13.42,13.3,13.38,13.35,13.42,6.67]
     data2 = [22.65,22.07,21.97,7.47,22.2,22.59,22.47,7.55,18.62,18.75,18.75,18.77,18.67,18.44,18.72,18.92,18.37,19.1,18.65,18.7,18.67,\
             18.64,19.85,89.7676,16.1,15.95,15.98,14.87,16.02,14.85,14.95,14.85,14.7,14.95,14.92,14.95,14.8,14.92,16.35,16.27,11.15,\
             18.82,18.62,19,18.77,18.8,18.82,18.8,18.7,18.69,18.7,18.42,18.72,12.57,16.64,16.59,16.6,16.62,16.7,17.37,13.4,13.4,13.35]#,\
             # 13.42,13.35,13.42,13.4,13.4,13.42,13.37,13.35,13.42,13.3,13.38,13.35,13.42,6.67]
+    # data = [9, 22, 25, 7, 25, 18, 13, 16, 12, 8, 13, 25, 8, 24, 7, 16, 23]
+    # data = [23.95, 14.44, 13.19, 22.75, 24.31, 18.56, 15.96, 10.37, 8.7, 16.83, 9.4, 9.86, 12.53, 24.74, 21.81, 17.55, 13.72]
+    # data = [7.32, 21.53, 19.96, 17.05, 11.52, 8.29, 8.54, 15.1, 12.89, 23.69, 21.81, 23.51, 21.29, 14.5, 17.33, 15.32, 19.39]
+    # data = [17.65, 18.85, 18.59, 15.87, 10.01, 24.82, 24.93, 15.06, 23.56, 15.94, 21.15, 19.36, 20.8, 14.25, 15.77, 19.18, 7.41]
+    # data = [23.19, 17.91, 12.49, 12.44, 12.05, 17.33, 23.1, 17.24, 20.34, 24.07, 13.18, 8.91, 20.36, 19.65, 17.23]
+    # data = [13.9, 9.96, 9.98, 22.11, 16.68, 22.47, 10.46, 9.99, 20.16, 16.92, 15.23, 18.8, 15.45, 8.96, 24.34]
+    # data = [22.85, 18.08, 17.5, 22.44, 7.01, 24.29, 7.36, 22.55, 18.17, 18.04, 18.51, 18.94, 21.58, 17.45, 20.18]
     # data = [24.67, 20.95, 24.9, 21.15, 14.74, 14.54, 22.71, 13.57, 12.84, 24.36, 23.29, 8.97, 20.46, 14.2, 18.97, 22.85]
     # data = [11.76, 17.23, 25.0, 7.47, 7.71, 23.61, 16.96, 16.38, 15.41, 12.9, 23.64, 21.94, 10.63, 18.95, 12.25, 20.09, 8.89, 7.21]
     # data = [22.28, 17.26, 21.98, 18.16, 7.86, 11.19, 11.22, 20.88, 23.82, 8.01, 22.75, 14.57, 19.94, 12.16, 20.06, 9.46, 12.24, 19.19]
     # data = [15.67, 12.02, 22.01, 11.66, 13.55, 13.83, 24.79, 8.92, 14.83, 9.56, 9.65, 7.37, 21.67, 9.35, 23.21, 16.27, 21.54, 23.56]
     # data = [24.31, 23.92, 19.49, 23.78, 15.05, 14.98, 13.64, 23.73, 23.26, 20.02, 23.37, 19.41, 19.05, 8.11, 19.9, 18.63, 17.82, 16.95]
-    # data = generate_random(7, 25, 15, isFloat=True)
-    data = [22.47, 18.99, 7.5, 22.79, 20.0, 9.54, 14.32, 7.87, 21.13, 9.49, 13.32, 12.76, 18.85, 20.74, 16.54, 18.05, 10.63, 11.63]
+    # data = generate_random(6, 35, max_num, isFloat=True)
+    # data = [22.47, 18.99, 7.5, 22.79, 20.0, 9.54, 14.32, 7.87, 21.13, 9.49, 13.32, 12.76, 18.85, 20.74, 16.54, 18.05, 10.63, 11.63]
     max_value = 70
     base_th = 20
+
+    min_space = 100
+    while min_space > 5:
+        data = generate_random(3, 35, max_num, isFloat=True)
+        min_space = max_value - sum(data) % max_value
 
     if sum(data) % max_value == 0:
         best_grp = int(sum(data) / max_value)
@@ -910,7 +925,7 @@ if __name__ == '__main__':
     len(data), sum(data), best_grp, round(min_space,2)))
 
     sort_data = sorted(data, reverse=True)  # 由大到小
-    # print("orignal: {}".format(data))
+    print("orignal: {}".format(data))
     # print("sort   : {}".format(sort_data))
     print('------------正确穷举------------')
     t0 = time.time()
